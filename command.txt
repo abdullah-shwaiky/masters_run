@@ -1,0 +1,1 @@
+python $SUMO_HOME/tools/randomTrips.py -n 2x2.net.xml -b 0 -e 600 -p 1.5 --seed 42 --random-depart -r 2x2.rou.xml

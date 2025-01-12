@@ -1,0 +1,1 @@
+netgenerate -o single-intersection.net.xml -L 2 --grid true --grid.length 150 --grid.number 1 --tls.layout alternateOneWay --grid.attach-length 250 --no-turnarounds --tls.set A0

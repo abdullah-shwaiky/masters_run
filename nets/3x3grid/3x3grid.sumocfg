@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<configuration>
+    <input>
+       <net-file value="3x3.net.xml"/>
+        <route-files value="3x3.rou.xml"/>
+    </input>
+	<time>
+        <begin value="0"/>
+        <end value="2000"/>
+    </time>
+</configuration>
