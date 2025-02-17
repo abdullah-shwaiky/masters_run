@@ -16,9 +16,11 @@ else:
     sys.exit("Please declare the environment variable 'SUMO_HOME'")
 
 import traci
-
 import sumo_rl
 from sumo_rl.exploration import EpsilonGreedy
+
+# Set up device (CPU or GPU)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 # DDQN Model (Neural Network to approximate Q-values)
@@ -46,9 +48,9 @@ class DDQNAgent:
         self.epsilon_decay = epsilon_decay
         self.batch_size = batch_size
 
-        self.memory = deque(maxlen=50)  # Experience Replay buffer
-        self.model = DDQN(state_size, action_size).float()  # Q-network
-        self.target_model = DDQN(state_size, action_size).float()  # Target Q-network
+        self.memory = deque(maxlen=5000)  # Experience Replay buffer
+        self.model = DDQN(state_size, action_size).to(device)  # Q-network
+        self.target_model = DDQN(state_size, action_size).to(device)  # Target Q-network
         self.update_target_model()
 
         self.optimizer = optim.Adam(self.model.parameters(), lr=alpha)
@@ -56,7 +58,7 @@ class DDQNAgent:
     def act(self, state):
         if np.random.rand() <= self.epsilon:
             return random.randrange(self.action_size)
-        state = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
+        state = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(device)
         q_values = self.model(state)
         return torch.argmax(q_values).item()
 
@@ -69,11 +71,11 @@ class DDQNAgent:
         batch = random.sample(self.memory, self.batch_size)
         states, actions, rewards, next_states, dones = zip(*batch)
 
-        states = torch.tensor(states, dtype=torch.float32)
-        actions = torch.tensor(actions, dtype=torch.long)
-        rewards = torch.tensor(rewards, dtype=torch.float32)
-        next_states = torch.tensor(next_states, dtype=torch.float32)
-        dones = torch.tensor(dones, dtype=torch.bool)
+        states = torch.tensor(states, dtype=torch.float32).to(device)
+        actions = torch.tensor(actions, dtype=torch.long).to(device)
+        rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
+        next_states = torch.tensor(next_states, dtype=torch.float32).to(device)
+        dones = torch.tensor(dones, dtype=torch.bool).to(device)
 
         # Get Q values for current states (from the main Q-network)
         current_q_values = self.model(states).gather(1, actions.unsqueeze(1)).squeeze(1)
@@ -83,7 +85,7 @@ class DDQNAgent:
 
         # Get Q values for next states using the target Q-network
         next_q_values = self.target_model(next_states).gather(1, next_actions.unsqueeze(1)).squeeze(1)
-        
+
         # Compute the target Q-values using the Double DQN update rule
         target_q_values = rewards + (self.gamma * next_q_values * (1 - dones.float()))
 
@@ -111,6 +113,7 @@ if __name__ == "__main__":
     epsilon_decay = 0.995
     batch_size = 64
     runs = 25
+
     from my_maps import map_details
     for map_ in map_details:
         env = sumo_rl.env(
@@ -118,14 +121,14 @@ if __name__ == "__main__":
             route_file=map_['route_file'],
             use_gui=False,
             num_seconds=2000,
-            reward_fn = "weighted",
-            fixed_ts = False 
+            reward_fn="weighted",
+            fixed_ts=False
         )
 
         for run in range(1, runs + 1):
             env.reset()
             initial_states = {ts: env.observe(ts) for ts in env.agents}
-            
+
             ddqn_agents = {
                 ts: DDQNAgent(
                     state_size=env.observation_space(ts).shape[0],  # Assuming state is a 1D array
@@ -145,8 +148,8 @@ if __name__ == "__main__":
                 s, r, terminated, truncated, info = env.last()
                 done = terminated or truncated
 
-                next_state = env.observe(agent) 
-                
+                next_state = env.observe(agent)
+
                 action = ddqn_agents[agent].act(s) if not done else None
                 if not done:
                     ddqn_agents[agent].learn(s, action, r, next_state, done)

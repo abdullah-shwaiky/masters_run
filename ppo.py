@@ -21,6 +21,8 @@ import traci
 import sumo_rl
 from sumo_rl.exploration import EpsilonGreedy
 
+# Set device
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # PPO Model (Policy + Value Network)
 class PPO(nn.Module):
@@ -50,11 +52,11 @@ class PPOAgent:
         self.update_epochs = update_epochs
 
         self.memory = deque(maxlen=50)  # Experience Replay buffer
-        self.model = PPO(state_size, action_size).float()  # Policy and value network
+        self.model = PPO(state_size, action_size).to(device)  # Policy and value network
         self.optimizer = optim.Adam(self.model.parameters(), lr=alpha)
 
     def act(self, state):
-        state = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
+        state = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(device)
         policy, _ = self.model(state)
         action = torch.multinomial(policy, 1).item()  # Sample action from policy
         return action
@@ -66,11 +68,11 @@ class PPOAgent:
         # Update the policy using PPO's objective
         states, actions, rewards, next_states, dones, log_probs, values = zip(*self.memory)
 
-        states = torch.tensor(np.array(states), dtype=torch.float32)
-        actions = torch.tensor(actions, dtype=torch.long)
-        rewards = torch.tensor(rewards, dtype=torch.float32)
-        next_states = torch.tensor(next_states, dtype=torch.float32)
-        dones = torch.tensor(dones, dtype=torch.bool)
+        states = torch.tensor(np.array(states), dtype=torch.float32).to(device)
+        actions = torch.tensor(actions, dtype=torch.long).to(device)
+        rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
+        next_states = torch.tensor(next_states, dtype=torch.float32).to(device)
+        dones = torch.tensor(dones, dtype=torch.bool).to(device)
 
         _, next_values = self.model(next_states)
         _, values = self.model(states)
@@ -84,7 +86,7 @@ class PPOAgent:
         # Compute the loss for the policy (surrogate objective with clipping)
         policy, _ = self.model(states)
         new_log_probs = torch.log(policy.gather(1, actions.unsqueeze(1)))
-        ratios = torch.exp(new_log_probs - torch.tensor(log_probs))  # ratio of new to old policy
+        ratios = torch.exp(new_log_probs - torch.tensor(log_probs).to(device))  # ratio of new to old policy
 
         # Clipped surrogate objective
         clip_adv = torch.clamp(ratios, 1 - self.epsilon, 1 + self.epsilon) * advantages
@@ -150,8 +152,8 @@ if __name__ == "__main__":
                 action = ppo_agents[agent].act(s) if not done else None
                 if not done:
                     # Store experience for learning
-                    log_prob = torch.log(ppo_agents[agent].model(torch.tensor(s, dtype=torch.float32).unsqueeze(0))[0][0][action])
-                    value = ppo_agents[agent].model(torch.tensor(s, dtype=torch.float32).unsqueeze(0))[1]
+                    log_prob = torch.log(ppo_agents[agent].model(torch.tensor(s, dtype=torch.float32).unsqueeze(0).to(device))[0][0][action])
+                    value = ppo_agents[agent].model(torch.tensor(s, dtype=torch.float32).unsqueeze(0).to(device))[1]
                     ppo_agents[agent].store(s, action, r, next_state, done, log_prob, value)
 
                 env.step(action)

@@ -1,9 +1,8 @@
-import argparse
 import os
 import sys
 import numpy as np
-import random
-from collections import deque
+import torch
+from collections import defaultdict
 
 # Set up SUMO
 if "SUMO_HOME" in os.environ:
@@ -12,35 +11,37 @@ if "SUMO_HOME" in os.environ:
 else:
     sys.exit("Please declare the environment variable 'SUMO_HOME'")
 
-
 import sumo_rl
 from linear_rl.true_online_sarsa import TrueOnlineSarsaLambda
+
+# Set device
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 if __name__ == "__main__":
     # Hyperparameters for SARSA
     alpha = 0.01  # Learning rate for SARSA
     gamma = 0.99  # Discount factor
     epsilon = 0.05  # Epsilon for epsilon-greedy exploration
-    batch_size = 64  # Batch size for experience replay
     runs = 25  # Number of training runs
-    
+
     from my_maps import map_details
+
     for map_ in map_details:
         env = sumo_rl.env(
-            net_file=map_['net_file'],
-            route_file=map_['route_file'],
+            net_file=map_["net_file"],
+            route_file=map_["route_file"],
             use_gui=False,
             num_seconds=2000,
             reward_fn="weighted",
             fixed_ts=False,
-            out_csv_name=f"{map_['save_location']}sarsa/sarsa"
+            out_csv_name=f"{map_['save_location']}sarsa/sarsa",
         )
         env.reset()
 
-        # Initialize SARSA agents using linear_rl's SARSA class
+        # Initialize SARSA agents
         sarsa_agents = {
             ts: TrueOnlineSarsaLambda(
-                state_space=env.observation_space(ts),  # Assuming state is a 1D array
+                state_space=env.observation_space(ts),
                 action_space=env.action_space(ts),
                 alpha=alpha,
                 gamma=gamma,
@@ -50,30 +51,50 @@ if __name__ == "__main__":
         }
 
         for run in range(1, runs + 1):
+            print(f"Starting run {run}...")
             env.reset()
-            counter = 0
+            observations = {ts: env.observe(ts) for ts in env.agents}
+            terminated_agents = set()
 
-            # Start the simulation loop for each agent
-            for agent in env.agent_iter():
-                s, r, terminated, truncated, info = env.last()
-                done = terminated or truncated
+            while len(terminated_agents) < len(env.agents):
+                actions = {
+                    ts: sarsa_agents[ts].act(obs)
+                    for ts, obs in observations.items()
+                    if ts not in terminated_agents
+                }
 
-                next_state = env.observe(agent)
+                # Step in the environment for each agent
+                for ts, action in actions.items():
+                    env.step(action)
 
-                # The agent selects the action using SARSA (epsilon-greedy policy)
-                action = sarsa_agents[agent].act(s) if not done else None
+                # Collect experiences
+                next_observations = {}
+                rewards = {}
+                dones = {}
+                for ts in env.agents:
+                    if ts in terminated_agents:
+                        continue
+                    obs, reward, terminated, truncated, _ = env.last(ts)
+                    next_observations[ts] = obs
+                    rewards[ts] = reward
+                    dones[ts] = terminated or truncated
+                    if dones[ts]:
+                        terminated_agents.add(ts)
 
-                # After taking the action, learn from the experience
-                if not done:
-                    # The next action is selected for SARSA learning rule
-                    next_action = sarsa_agents[agent].act(next_state)
-                    sarsa_agents[agent].learn(s, action, r, next_state, done)
+                # Update SARSA agents
+                for ts in actions.keys():
+                    if not dones[ts]:
+                        next_action = sarsa_agents[ts].act(next_observations[ts])
+                        sarsa_agents[ts].learn(
+                            observations[ts],
+                            actions[ts],
+                            rewards[ts],
+                            next_observations[ts],
+                            dones[ts],
+                        )
+                        actions[ts] = next_action
 
-                # Move the simulation one step forward
-                env.step(action)
-                counter += 1
-                print(f"Step {counter} for agent {agent}")
+                observations = next_observations
 
-            # Save the results for each run
-            # env.unwrapped.env.save_csv(f"{map_['save_location']}sarsa/sarsa", run)
+            print(f"Run {run} completed.")
             env.close()

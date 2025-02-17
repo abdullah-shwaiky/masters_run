@@ -50,8 +50,12 @@ class A2CAgent:
         self.model = A2C(state_size, action_size).float()  # Policy and value network
         self.optimizer = optim.Adam(self.model.parameters(), lr=alpha)
 
+        # Check if CUDA is available and move model to GPU if possible
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model.to(self.device)
+
     def act(self, state):
-        state = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
+        state = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(self.device)  # Move state to GPU
         policy, _ = self.model(state)
         action = torch.multinomial(policy, 1).item()  # Sample action from policy
         return action
@@ -63,11 +67,11 @@ class A2CAgent:
         # Update the policy using A2C's objective
         states, actions, rewards, next_states, dones, log_probs, values = zip(*self.memory)
 
-        states = torch.tensor(np.array(states), dtype=torch.float32)
-        actions = torch.tensor(actions, dtype=torch.long)
-        rewards = torch.tensor(rewards, dtype=torch.float32)
-        next_states = torch.tensor(next_states, dtype=torch.float32)
-        dones = torch.tensor(dones, dtype=torch.bool)
+        states = torch.tensor(np.array(states), dtype=torch.float32).to(self.device)
+        actions = torch.tensor(actions, dtype=torch.long).to(self.device)
+        rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
+        next_states = torch.tensor(next_states, dtype=torch.float32).to(self.device)
+        dones = torch.tensor(dones, dtype=torch.bool).to(self.device)
 
         # Calculate value targets (TD target)
         _, next_values = self.model(next_states)
@@ -143,8 +147,8 @@ if __name__ == "__main__":
                 action = a2c_agents[agent].act(s) if not done else None
                 if not done:
                     # Store experience for learning
-                    log_prob = torch.log(a2c_agents[agent].model(torch.tensor(s, dtype=torch.float32).unsqueeze(0))[0][0][action])
-                    value = a2c_agents[agent].model(torch.tensor(s, dtype=torch.float32).unsqueeze(0))[1]
+                    log_prob = torch.log(a2c_agents[agent].model(torch.tensor(s, dtype=torch.float32).unsqueeze(0).to(a2c_agents[agent].device))[0][0][action])
+                    value = a2c_agents[agent].model(torch.tensor(s, dtype=torch.float32).unsqueeze(0).to(a2c_agents[agent].device))[1]
                     a2c_agents[agent].store(s, action, r, next_state, done, log_prob, value)
 
                 env.step(action)
