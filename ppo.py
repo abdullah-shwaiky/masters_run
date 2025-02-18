@@ -108,13 +108,21 @@ class PPOAgent:
 
 
 if __name__ == "__main__":
-    alpha = 0.01  # Learning rate for PPO
+    # Command-line argument parsing
+    parser = argparse.ArgumentParser(description='PPO with SUMO simulation')
+    parser.add_argument('--alpha_val', type=float, default=0.7, help='Reward parameter.')
+    args = parser.parse_args()
+
+    # Use the parsed alpha value
+    alpha = 0.01
+    alpha_val = args.alpha_val
     gamma = 0.99
-    epsilon = 0.05
+    epsilon = 0.2
     batch_size = 64
     update_epochs = 10
     runs = 25
     from my_maps import map_details
+
     for map_ in map_details:
         env = sumo_rl.env(
             net_file=map_['net_file'],
@@ -122,9 +130,10 @@ if __name__ == "__main__":
             use_gui=False,
             num_seconds=2000,
             reward_fn="weighted",
-            fixed_ts=False
+            fixed_ts=False,
+            alpha = alpha_val
         )
-
+        total_reward = 0
         for run in range(1, runs + 1):
             env.reset()
             initial_states = {ts: env.observe(ts) for ts in env.agents}
@@ -134,7 +143,7 @@ if __name__ == "__main__":
                     state_size=env.observation_space(ts).shape[0],  # Assuming state is a 1D array
                     action_size=env.action_space(ts).n,
                     gamma=gamma,
-                    alpha=alpha,
+                    alpha=alpha, 
                     epsilon=epsilon,
                     batch_size=batch_size,
                     update_epochs=update_epochs
@@ -155,7 +164,7 @@ if __name__ == "__main__":
                     log_prob = torch.log(ppo_agents[agent].model(torch.tensor(s, dtype=torch.float32).unsqueeze(0).to(device))[0][0][action])
                     value = ppo_agents[agent].model(torch.tensor(s, dtype=torch.float32).unsqueeze(0).to(device))[1]
                     ppo_agents[agent].store(s, action, r, next_state, done, log_prob, value)
-
+                total_reward += r
                 env.step(action)
                 counter += 1
                 print(counter)
@@ -164,6 +173,9 @@ if __name__ == "__main__":
                 if done:
                     ppo_agents[agent].learn()
 
-            env.unwrapped.env.save_csv(f"{map_['save_location']}ppo/ppo", run)
+            save_dir = f"{alpha_val}/{map_['save_location']}ppo/"
+            os.makedirs(save_dir, exist_ok=True)
+            env.unwrapped.env.save_csv(f"{alpha_val}/{map_['save_location']}ppo/ppo", run)
             torch.save(ppo_agents[agent].model.state_dict(), f"models/ppo/{map_['net_file'].split('/')[-1][:map_['net_file'].split('/')[-1].index('.')]}/model_run_{run}.pth")
-            env.close()
+        env.close()
+    print(total_reward)

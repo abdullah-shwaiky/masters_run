@@ -6,6 +6,7 @@ import numpy as np
 import csv
 from collections import deque
 from torch.distributions import Categorical
+import argparse  # Import argparse for handling command-line arguments
 
 # Set up SUMO
 if "SUMO_HOME" in os.environ:
@@ -122,18 +123,20 @@ def trpo_step(policy_net, states, actions, advantages, old_log_probs, max_kl=0.0
 
 # Main TRPO Implementation
 if __name__ == "__main__":
-    alpha = 0.01  # Learning rate for value network
+    # Command-line argument parsing
+    parser = argparse.ArgumentParser(description='TRPO with SUMO simulation')
+    parser.add_argument('--alpha_val', type=float, default=0.7, help='Reward parameter.')
+    args = parser.parse_args()
+    
+    # Use the parsed alpha value
+    alpha_val = args.alpha_val
+    alpha = 0.01
     gamma = 0.99  # Discount factor
     runs = 25
     timesteps = 2000
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Prepare to save results
-    result_file = "training_results.csv"
-    with open(result_file, 'w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['Episode', 'Total Reward'])
 
     from my_maps import map_details
     for map_ in map_details:
@@ -143,9 +146,10 @@ if __name__ == "__main__":
             use_gui=False,
             num_seconds=timesteps,
             reward_fn="weighted",
-            fixed_ts=False
+            fixed_ts=False,
+            alpha = alpha_val
         )
-
+        total_reward = 0
         for run in range(1, runs + 1):
             print(f"Starting Run {run} of {runs} on map {map_['net_file']}...")
             env.reset()
@@ -154,7 +158,6 @@ if __name__ == "__main__":
             optimizer_value = torch.optim.Adam(value_net.parameters(), lr=alpha)
 
             states, actions, rewards, log_probs, dones = [], [], [], [], []
-            total_reward = 0
 
             for t in range(timesteps):
                 for agent in env.agent_iter():
@@ -177,18 +180,13 @@ if __name__ == "__main__":
                     env.step(action)  # Perform the action in the environment
 
             # Save the model weights after each run
-            save_dir = f"{map_['save_location']}trpo/"
+            save_dir = f"{alpha_val}/{map_['save_location']}trpo/"
             os.makedirs(save_dir, exist_ok=True)
-            torch.save(policy_net.state_dict(), f"models/trpo/{map_['net_file'].split('/')[-1][:map_['net_file'].split('/')[-1].index('.')]}/model_run_{run}.pth")
-            torch.save(value_net.state_dict(), f"models/trpo/{map_['net_file'].split('/')[-1][:map_['net_file'].split('/')[-1].index('.')]}/value_net_run_{run}.pth")
-
-            # # Save the results for each run
-            # with open(result_file, 'a', newline='') as file:
-            #     writer = csv.writer(file)
-            #     writer.writerow([run, total_reward])
+            # torch.save(policy_net.state_dict(), f"{alpha_val}/models/trpo/{map_['net_file'].split('/')[-1][:map_['net_file'].split('/')[-1].index('.')]}/model_run_{run}.pth")
+            # torch.save(value_net.state_dict(), f"{alpha_val}/models/trpo/{map_['net_file'].split('/')[-1][:map_['net_file'].split('/')[-1].index('.')]}/value_net_run_{run}.pth")
 
             # Save the CSV of agent rewards (if applicable)
-            env.unwrapped.env.save_csv(f"{map_['save_location']}trpo/trpo", run)
+            env.unwrapped.env.save_csv(f"{alpha_val}/{map_['save_location']}trpo/trpo", run)
 
             # Compute returns and advantages
             returns = []
@@ -213,5 +211,5 @@ if __name__ == "__main__":
 
             # Update policy network using TRPO
             trpo_step(policy_net, states, actions, advantages, old_log_probs)
-
         env.close()
+    print(total_reward)

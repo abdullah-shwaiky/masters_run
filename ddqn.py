@@ -106,7 +106,12 @@ class DDQNAgent:
 
 
 if __name__ == "__main__":
-    alpha = 0.01  # Learning rate for DDQN
+    # Command-line argument parsing for alpha_val
+    parser = argparse.ArgumentParser(description='DDQN with SUMO simulation')
+    parser.add_argument('--alpha_val', type=float, default=0.7, help='Learning rate for DDQN')
+    args = parser.parse_args()
+    alpha = 0.01
+    alpha_val = args.alpha_val  # Learning rate for DDQN passed via command line
     gamma = 0.99
     epsilon = 0.05
     epsilon_min = 0.05
@@ -115,6 +120,7 @@ if __name__ == "__main__":
     runs = 25
 
     from my_maps import map_details
+    total_reward = 0
     for map_ in map_details:
         env = sumo_rl.env(
             net_file=map_['net_file'],
@@ -122,7 +128,8 @@ if __name__ == "__main__":
             use_gui=False,
             num_seconds=2000,
             reward_fn="weighted",
-            fixed_ts=False
+            fixed_ts=False,
+            alpha = alpha_val
         )
 
         for run in range(1, runs + 1):
@@ -134,7 +141,7 @@ if __name__ == "__main__":
                     state_size=env.observation_space(ts).shape[0],  # Assuming state is a 1D array
                     action_size=env.action_space(ts).n,
                     gamma=gamma,
-                    alpha=alpha,
+                    alpha=alpha_val,  # Use alpha_val here
                     epsilon=epsilon,
                     epsilon_min=epsilon_min,
                     epsilon_decay=epsilon_decay,
@@ -153,11 +160,12 @@ if __name__ == "__main__":
                 action = ddqn_agents[agent].act(s) if not done else None
                 if not done:
                     ddqn_agents[agent].learn(s, action, r, next_state, done)
-
+                total_reward += r
                 env.step(action)
                 counter += 1
                 print(counter)
 
-            env.unwrapped.env.save_csv(f"{map_['save_location']}ddqn/ddqn", run)
+            env.unwrapped.env.save_csv(f"{alpha_val}/{map_['save_location']}ddqn/ddqn", run)
             torch.save(ddqn_agents[agent].model.state_dict(), f"models/ddqn/{map_['net_file'].split('/')[-1][:map_['net_file'].split('/')[-1].index('.')]}/model_run_{run}.pth")
-            env.close()
+        env.close()
+    print(total_reward)
