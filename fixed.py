@@ -17,13 +17,16 @@ import sumo_rl
 from linear_rl.true_online_sarsa import TrueOnlineSarsaLambda
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='PPO with SUMO simulation')
+    parser.add_argument('--alpha_val', type=float, default=0.7, help='Reward parameter.')
+    args = parser.parse_args()
     # Hyperparameters for SARSA
     alpha = 0.001  # Learning rate for SARSA
     gamma = 0.99  # Discount factor
     epsilon = 0.05  # Epsilon for epsilon-greedy exploration
     batch_size = 64  # Batch size for experience replay
     runs = 2  # Number of training runs
-    
+    alpha_val = args.alpha_val
     from my_maps import map_details
     for map_ in map_details:
         env = sumo_rl.env(
@@ -33,7 +36,8 @@ if __name__ == "__main__":
             num_seconds=2000,
             reward_fn="weighted",
             fixed_ts=True,
-            out_csv_name=f"{map_['save_location']}fixed/fixed"
+            out_csv_name=f"{map_['save_location']}fixed/fixed",
+            alpha = alpha_val
         )
         env.reset()
 

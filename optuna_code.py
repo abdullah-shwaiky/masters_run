@@ -22,6 +22,10 @@ def objective(trial):
         "python", "ddqn.py",
         "--alpha_val", str(alpha)
     ]
+    fixed_command = [
+        "python", "fixed.py",
+        "--alpha_val", str(alpha)
+    ]
     libsumo_command = [
         "export LIBSUMO_AS_TRACI=1"
     ]
